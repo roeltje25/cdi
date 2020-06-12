@@ -19,7 +19,9 @@ package com.vaadin.cdi.context;
 import com.vaadin.cdi.annotation.NormalUIScoped;
 import com.vaadin.cdi.annotation.RouteScopeOwner;
 import com.vaadin.cdi.annotation.RouteScoped;
+import com.vaadin.flow.component.UI;
 import com.vaadin.flow.router.AfterNavigationEvent;
+import com.vaadin.flow.router.Route;
 import org.apache.deltaspike.core.api.provider.BeanProvider;
 import org.apache.deltaspike.core.util.context.AbstractContext;
 import org.apache.deltaspike.core.util.context.ContextualStorage;
@@ -30,9 +32,12 @@ import javax.enterprise.inject.spi.Bean;
 import javax.enterprise.inject.spi.BeanManager;
 import javax.enterprise.inject.spi.PassivationCapable;
 import java.lang.annotation.Annotation;
+import java.util.List;
+import java.util.Optional;
 import java.util.Set;
 import java.util.function.Supplier;
 import java.util.stream.Collectors;
+import java.util.stream.Stream;
 
 import static javax.enterprise.event.Reception.IF_EXISTS;
 
@@ -111,12 +116,21 @@ public class RouteScopedContext extends AbstractContext {
             }
         }
         final Bean<?> bean = (Bean<?>) contextual;
-        return bean.getQualifiers()
+        Stream<Class> byAnnotation = bean.getQualifiers()
                 .stream()
                 .filter(annotation -> annotation instanceof RouteScopeOwner)
-                .map(annotation -> (Class) (((RouteScopeOwner) annotation).value()))
-                .findFirst()
-                .orElse(bean.getBeanClass());
+                .map(annotation -> (Class) (((RouteScopeOwner) annotation).value()));
+        Stream<Class> byBeanItself = Stream.of( (Class)bean.getBeanClass() )
+                .filter( b -> b.isAnnotationPresent( Route.class ) );
+        Stream<Class> byCurrentRoute = Optional.ofNullable( UI.getCurrent( ) ).stream( )
+                .map(ui -> ui.getInternals( ).getActiveRouterTargetsChain( ))
+                .flatMap( List::stream )
+                .map(Object::getClass);
+        return Stream.of( byAnnotation, byBeanItself, byCurrentRoute )
+            .map( Stream::findFirst )
+            .flatMap( Optional::stream )
+            .findFirst( )
+            .orElse(bean.getBeanClass());
     }
 
 }
